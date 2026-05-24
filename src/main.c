@@ -81,6 +81,16 @@ void print_decode_entry(DecodeEntry *e) {
     return;
 }
 
+DecodeEntry* dict_get(DecodeEntry *e, const char *key) {
+    if (e->type != DecodeTypeDict) return NULL;
+    for (int i = 0; i < e->sub_e_len; i += 2) {
+        if (e->sub_e[i]->type == DecodeTypeStr
+            && strcmp(e->sub_e[i]->decode_str, key) == 0) {
+            return e->sub_e[i + 1];
+        }
+    }
+    return NULL;
+}
 DecodeEntry* decode_bencode(const char* bencoded_value) {
     DecodeEntry *e = calloc(1, sizeof(*e));
     e->type = DecodeTypeMax;
@@ -136,6 +146,36 @@ DecodeEntry* decode_bencode(const char* bencoded_value) {
     return e;
 }
 
+static void handle_info(const char *filename) {
+    char buf[4096] = {0};
+    FILE *fp = fopen(filename, "rb");
+    if (!fp) {
+        fprintf(stderr, "Cannot open file: %s\n", filename);
+        return;
+    }
+    size_t n = fread(buf, 1, sizeof(buf) - 1, fp);
+    buf[n] = '\0';
+    fclose(fp);
+
+    DecodeEntry *e = decode_bencode(buf);
+    if (!e) return;
+
+    DecodeEntry *announce = dict_get(e, "announce");
+    if (announce) {
+        printf("Tracker URL: %s\n", announce->decode_str);
+    }
+
+    DecodeEntry *info = dict_get(e, "info");
+    if (info) {
+        DecodeEntry *length = dict_get(info, "length");
+        if (length) {
+            printf("Length: %s\n", length->decode_str);
+        }
+    }
+
+    free_decode_entry(e);
+}
+
 int main(int argc, char* argv[]) {
 	// Disable output buffering
 	setbuf(stdout, NULL);
@@ -158,7 +198,9 @@ int main(int argc, char* argv[]) {
         print_decode_entry(e);
         putchar('\n');
         free_decode_entry(e);
-    } else {
+    } else if (strcmp(command, "info") == 0) {
+        handle_info(argv[2]);
+    }  else {
         fprintf(stderr, "Unknown command: %s\n", command);
         return 1;
     }
