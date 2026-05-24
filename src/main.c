@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <openssl/sha.h>
 
 bool is_digit(char c) {
     return c >= '0' && c <= '9';
@@ -19,6 +20,7 @@ struct decode_entry;
 
 typedef struct decode_entry {
     DecodeType type;
+    const char *raw_start;
     union {
         char *decode_str;
         struct {
@@ -94,6 +96,7 @@ DecodeEntry* dict_get(DecodeEntry *e, const char *key) {
 DecodeEntry* decode_bencode(const char* bencoded_value) {
     DecodeEntry *e = calloc(1, sizeof(*e));
     e->type = DecodeTypeMax;
+    e->raw_start = bencoded_value;
 
     if (is_digit(bencoded_value[0])) {
         int length = atoi(bencoded_value);
@@ -171,6 +174,13 @@ static void handle_info(const char *filename) {
         if (length) {
             printf("Length: %s\n", length->decode_str);
         }
+        unsigned char hash[SHA_DIGEST_LENGTH];
+        SHA1((unsigned char *)info->raw_start, info->cus_len, hash);
+        printf("Info Hash: ");
+        for (int i = 0; i < SHA_DIGEST_LENGTH; i++) {
+            printf("%02x", hash[i]);
+        }
+        printf("\n");
     }
 
     free_decode_entry(e);
