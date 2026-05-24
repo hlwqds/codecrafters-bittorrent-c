@@ -181,6 +181,19 @@ static void handle_info(const char *filename) {
             printf("%02x", hash[i]);
         }
         printf("\n");
+        DecodeEntry *piece_length = dict_get(info, "piece length");
+        if (piece_length) {
+            printf("Piece Length: %s\n", piece_length->decode_str);
+        }
+        DecodeEntry *pieces = dict_get(info, "pieces");
+        if (pieces) {
+            for (int i = 0; i < pieces->cus_len; i += 20) {
+                for (int j = 0; j < 20; j++) {
+                    printf("%02x", (unsigned char)pieces->decode_str[i + j]);
+                }
+                printf("\n");
+            }
+        }
     }
 
     free_decode_entry(e);
