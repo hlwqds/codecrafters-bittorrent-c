@@ -7,35 +7,112 @@ bool is_digit(char c) {
     return c >= '0' && c <= '9';
 }
 
-char* decode_bencode(const char* bencoded_value) {
+typedef enum {
+    DecodeTypeStr,
+    DecodeTypeInt,
+    DecodeTypeList,
+    DecodeTypeMax,
+} DecodeType;
+
+struct decode_entry;
+
+typedef struct decode_entry {
+    DecodeType type;
+    union {
+        char *decode_str;
+        struct {
+            struct decode_entry *sub_e[16];
+            int sub_e_len;
+        };
+    };
+    int cus_len;
+} DecodeEntry;
+
+void free_decode_entry(DecodeEntry *e) {
+    switch (e->type) {
+        case DecodeTypeList:
+            for (int i = 0; i < e->sub_e_len; i++) {
+                free_decode_entry(e->sub_e[i]);
+            }
+            break;
+        case DecodeTypeStr:
+        case DecodeTypeInt:
+            free(e->decode_str);
+            break;
+        default:
+            break;
+    }
+    free(e);
+}
+
+void print_decode_entry(DecodeEntry *e) {
+    switch (e->type) {
+        case DecodeTypeStr:
+            printf("\"%s\"", e->decode_str);
+            break;
+        case DecodeTypeInt:
+            printf("%s", e->decode_str);
+            break;
+        case DecodeTypeList:
+            putchar('[');
+            for (int i = 0; i < e->sub_e_len; i++) {
+                print_decode_entry(e->sub_e[i]);
+                if (i != e->sub_e_len - 1) {
+                    putchar(',');
+                }
+            }
+            putchar(']');
+            break;
+        default:
+            break;
+    }
+    return;
+}
+
+DecodeEntry* decode_bencode(const char* bencoded_value) {
+    DecodeEntry *e = calloc(1, sizeof(*e));
+    e->type = DecodeTypeMax;
+
     if (is_digit(bencoded_value[0])) {
         int length = atoi(bencoded_value);
-        const char* colon_index = strchr(bencoded_value, ':');
-        if (colon_index != NULL) {
-            const char* start = colon_index + 1;
-            char* decoded_str = (char*)malloc(length + 3);
-            decoded_str[0] = '\"';
-            strncpy(decoded_str + 1, start, length);
-            decoded_str[length + 1] = '\"';
-            decoded_str[length + 2] = '\0';
-            return decoded_str;
-        } else {
-            fprintf(stderr, "Invalid encoded value: %s\n", bencoded_value);
+        const char* colon = strchr(bencoded_value, ':');
+        if (colon == NULL) {
+            fprintf(stderr, "Invalid encoded value\n");
             exit(1);
         }
+        const char* start = colon + 1;
+        char* decoded_str = malloc(length + 1);
+        memcpy(decoded_str, start, length);
+        decoded_str[length] = '\0';
+        e->type = DecodeTypeStr;
+        e->decode_str = decoded_str;
+        e->cus_len = (start + length) - bencoded_value;
     } else if (bencoded_value[0] == 'i') {
-        const char *end = bencoded_value + 1;
-        while (*end != 'e') end++;
-        end--;
-        int len = end - bencoded_value;
-        char *decode_str = calloc(1, len + 1);
-        memcpy(decode_str, bencoded_value + 1, len);
-        decode_str[len] = '\0';
-        return decode_str;
+        const char *p = bencoded_value + 1;
+        if (*p == '-') p++;
+        while (is_digit(*p)) p++;
+        // p now points to 'e'
+        int len = p - (bencoded_value + 1);
+        char *decoded_str = calloc(1, len + 1);
+        memcpy(decoded_str, bencoded_value + 1, len);
+        e->type = DecodeTypeInt;
+        e->decode_str = decoded_str;
+        e->cus_len = (p + 1) - bencoded_value;
+    } else if (bencoded_value[0] == 'l') {
+        e->type = DecodeTypeList;
+        int offset = 1; // skip 'l'
+        while (bencoded_value[offset] != 'e') {
+            DecodeEntry *sub_e = decode_bencode(bencoded_value + offset);
+            e->sub_e[e->sub_e_len++] = sub_e;
+            offset += sub_e->cus_len;
+        }
+        e->cus_len = offset + 1; // +1 for trailing 'e'
     } else {
-        fprintf(stderr, "Only strings are supported at the moment\n");
+        fprintf(stderr, "Only strings, integers and lists are supported\n");
         exit(1);
     }
+
+    return e;
 }
 
 int main(int argc, char* argv[]) {
@@ -56,9 +133,10 @@ int main(int argc, char* argv[]) {
             
         // TODO: Uncomment the code below to pass the first stage
         const char* encoded_str = argv[2];
-        char* decoded_str = decode_bencode(encoded_str);
-        printf("%s\n", decoded_str);
-        free(decoded_str);
+        DecodeEntry *e = decode_bencode(encoded_str);
+        print_decode_entry(e);
+        putchar('\n');
+        free_decode_entry(e);
     } else {
         fprintf(stderr, "Unknown command: %s\n", command);
         return 1;
