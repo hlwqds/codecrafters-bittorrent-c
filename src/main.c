@@ -11,6 +11,7 @@ typedef enum {
     DecodeTypeStr,
     DecodeTypeInt,
     DecodeTypeList,
+    DecodeTypeDict,
     DecodeTypeMax,
 } DecodeType;
 
@@ -31,6 +32,7 @@ typedef struct decode_entry {
 void free_decode_entry(DecodeEntry *e) {
     switch (e->type) {
         case DecodeTypeList:
+        case DecodeTypeDict:
             for (int i = 0; i < e->sub_e_len; i++) {
                 free_decode_entry(e->sub_e[i]);
             }
@@ -62,6 +64,16 @@ void print_decode_entry(DecodeEntry *e) {
                 }
             }
             putchar(']');
+            break;
+        case DecodeTypeDict:
+            putchar('{');
+            for (int i = 0; i < e->sub_e_len; i += 2) {
+                print_decode_entry(e->sub_e[i]);       // key
+                putchar(':');
+                print_decode_entry(e->sub_e[i + 1]);   // value
+                if (i + 2 < e->sub_e_len) putchar(',');
+            }
+            putchar('}');
             break;
         default:
             break;
@@ -107,8 +119,17 @@ DecodeEntry* decode_bencode(const char* bencoded_value) {
             offset += sub_e->cus_len;
         }
         e->cus_len = offset + 1; // +1 for trailing 'e'
+    } else if (bencoded_value[0] == 'd') {
+        e->type = DecodeTypeDict;
+        int offset = 1; // skip 'd'
+        while (bencoded_value[offset] != 'e') {
+            DecodeEntry *sub_e = decode_bencode(bencoded_value + offset);
+            e->sub_e[e->sub_e_len++] = sub_e;
+            offset += sub_e->cus_len;
+        }
+        e->cus_len = offset + 1; // +1 for trailing 'e'
     } else {
-        fprintf(stderr, "Only strings, integers and lists are supported\n");
+        fprintf(stderr, "Only strings, integers, lists and dicts are supported\n");
         exit(1);
     }
 
